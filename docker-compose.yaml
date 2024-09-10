@@ -37,12 +37,36 @@ services:
       target: builder
     volumes:
       - ./go-backend:/usr/app
+    # command:
+    #   - go
+    #   - run
+    #   - /usr/app/main.go
     expose:
       - 3030
     ports:
       - 3031:3030
     networks:
       - express-mongo
+      - opensearch-net
+
+  go-auto:
+    image: otel/autoinstrumentation-go:v0.13.0-alpha
+    privileged: true
+    pid: "host"
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+      - OTEL_GO_AUTO_TARGET_EXE=/usr/app/goApp
+      - OTEL_SERVICE_NAME=goApp
+      - OTEL_PROPAGATORS=jaeger,tracecontext,baggage
+    volumes:
+      - ./go-backend:/usr/app
+      - /proc:/host/proc
+    networks:
+      - express-mongo
+      - opensearch-net
+    depends_on:
+      - jaeger
+      - go-backend
 
   mongo:
     restart: always
@@ -56,9 +80,161 @@ services:
     expose:
       - 27017
 
+  opensearch-node1:
+    image: opensearchproject/opensearch:latest
+    container_name: opensearch-node1
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch-node1
+      - discovery.seed_hosts=opensearch-node1,opensearch-node2
+      - cluster.initial_cluster_manager_nodes=opensearch-node1,opensearch-node2
+      - bootstrap.memory_lock=true # along with the memlock settings below, disables swapping
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m # minimum and maximum Java heap size, recommend setting both to 50% of system RAM
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD} # Sets the demo admin user password when using demo configuration, required for OpenSearch 2.12 and higher
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536 # maximum number of open files for the OpenSearch user, set to at least 65536 on modern systems
+        hard: 65536
+    volumes:
+      - opensearch-data1:/usr/share/opensearch/data
+      # - ./custom-opensearch.yml:/usr/share/opensearch/config/opensearch.yml
+    ports:
+      - 9200:9200
+      - 9300:9300
+      - 9600:9600 # required for Performance Analyzer
+    networks:
+      - opensearch-net
+
+  opensearch-node2:
+    image: opensearchproject/opensearch:latest
+    container_name: opensearch-node2
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch-node2
+      - discovery.seed_hosts=opensearch-node1,opensearch-node2
+      - cluster.initial_cluster_manager_nodes=opensearch-node1,opensearch-node2
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data2:/usr/share/opensearch/data
+      # - ./custom-opensearch.yml:/usr/share/opensearch/config/opensearch.yml
+    networks:
+      - opensearch-net
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:latest
+    container_name: opensearch-dashboards
+    ports:
+      - 5601:5601
+    expose:
+      - "5601"
+    environment:
+      OPENSEARCH_HOSTS: '["https://opensearch-node1:9200","https://opensearch-node2:9200"]'
+    networks:
+      - opensearch-net
+
+  # jaeger-collector:
+  #   image: jaegertracing/jaeger-collector:1
+  #   container_name: jaeger-collector
+  #   ports:
+  #     - "14269:14269"
+  #     - "14268:14268"
+  #     - "14267:14267"
+  #     - "14250:14250"
+  #     - "9411:9411"
+  #     - "4317:4317"
+  #     - "4318:4318"
+  #   networks:
+  #     - opensearch-net
+  #   restart: on-failure
+  #   environment:
+  #     - SPAN_STORAGE_TYPE=opensearch
+  #     - ES_USERNAME=${OPENSEARCH_INITIAL_USERNAME}
+  #     - ES_PASSWORD=${OPENSEARCH_INITIAL_PASSWORD}
+  #   command:
+  #     [
+  #       "--es.server-urls=https://opensearch-node1:9200,https://opensearch-node2:9200",
+  #       "--es.tls.enabled=true",
+  #       "--es.tls.skip-host-verify=true",
+  #       "--log-level=error",
+  #       "--es.version=7",
+  #       "--es.index-prefix=${OPENSEARCH_INITIAL_USERNAME}",
+  #     ]
+  #   depends_on:
+  #     - opensearch-node1
+
+  # jaeger-query:
+  #   image: jaegertracing/jaeger-query:1
+  #   ports:
+  #     - "16686:16686"
+  #     - "16687:16687"
+  #   networks:
+  #     - opensearch-net
+  #   restart: on-failure
+  #   environment:
+  #     - SPAN_STORAGE_TYPE=opensearch
+  #     - ES_USERNAME=${OPENSEARCH_INITIAL_USERNAME}
+  #     - ES_PASSWORD=${OPENSEARCH_INITIAL_PASSWORD}
+  #   command:
+  #     [
+  #       "--es.server-urls=https://opensearch-node1:9200,https://opensearch-node2:9200",
+  #       "--es.tls.enabled=true",
+  #       "--es.tls.skip-host-verify=true",
+  #       "--log-level=error",
+  #       "--es.version=7",
+  #       "--es.index-prefix=${OPENSEARCH_INITIAL_USERNAME}",
+  #     ]
+  #   depends_on:
+  #     - opensearch-node1
+
+  jaeger:
+    image: jaegertracing/all-in-one:1
+    ports:
+      - "14269:14269"
+      - "14268:14268"
+      - "14267:14267"
+      - "14250:14250"
+      - "9411:9411"
+      - "4317:4317"
+      - "4318:4318"
+      - "16686:16686"
+      - "16687:16687"
+    networks:
+      - opensearch-net
+    restart: on-failure
+    environment:
+      - SPAN_STORAGE_TYPE=opensearch
+      - ES_USERNAME=${OPENSEARCH_INITIAL_USERNAME}
+      - ES_PASSWORD=${OPENSEARCH_INITIAL_PASSWORD}
+    command:
+      [
+        "--es.server-urls=https://opensearch-node1:9200,https://opensearch-node2:9200",
+        "--es.tls.enabled=true",
+        "--es.tls.skip-host-verify=true",
+        "--log-level=error",
+        "--es.version=7",
+        "--es.index-prefix=${OPENSEARCH_INITIAL_USERNAME}",
+      ]
+    depends_on:
+      - opensearch-node1
+
 networks:
   react-express:
   express-mongo:
+  opensearch-net:
 
 volumes:
   mongo_data:
+  opensearch-data1:
+  opensearch-data2:

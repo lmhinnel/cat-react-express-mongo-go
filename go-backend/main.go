@@ -6,7 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
-	// "net/url"
+	"net/url"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -14,10 +14,10 @@ import (
 
 func handler(w http.ResponseWriter, r *http.Request) {
 	enableCors(&w)
-	// proxyUrl, _ := url.Parse("http://10.61.11.42:3128")
-	// myClient := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyUrl)}}
-	// resp, err := myClient.Get("https://api.thecatapi.com/v1/images/search")
-	resp, err := http.Get("https://api.thecatapi.com/v1/images/search")
+	proxyUrl, _ := url.Parse("http://10.61.11.42:3128")
+	myClient := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyUrl)}}
+	resp, err := myClient.Get("https://api.thecatapi.com/v1/images/search")
+	// resp, err := http.Get("https://api.thecatapi.com/v1/images/search")
 
 	if err != nil {
 		log.Printf("Request Failed: %s", err)

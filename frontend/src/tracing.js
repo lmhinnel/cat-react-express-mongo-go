@@ -22,7 +22,7 @@ const providerConfig = {
 };
 const provider = new WebTracerProvider(providerConfig);
 
-provider.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
+// provider.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
 
 provider.addSpanProcessor(
   new BatchSpanProcessor(new OTLPTraceExporter(collectorOptions))

@@ -8,6 +8,7 @@ WORKDIR /usr/app
 
 COPY go.mod go.sum ./
 RUN http_proxy=http://10.61.11.42:3128 https_proxy=http://10.61.11.42:3128 no_proxy=localhost,127.0.0.0/8,::1 go mod download
+# RUN go mod download
 
 # RUN go mod download
 # RUN curl -sSfL https://raw.githubusercontent.com/air-verse/air/master/install.sh | sh -s -- -b $(go env GOPATH)/bin

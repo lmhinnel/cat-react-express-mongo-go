@@ -11,7 +11,7 @@ services:
       - /usr/src/app/node_modules
     restart: always
     networks:
-      - react-express
+      - cat-go
     depends_on:
       - backend
 
@@ -23,11 +23,17 @@ services:
     volumes:
       - ./backend:/usr/src/app
       - /usr/src/app/node_modules
+    environment:
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+      - OTEL_NODE_RESOURCE_DETECTORS=all
+      - OTEL_SERVICE_NAME=nodeApp
+      - NODE_OPTIONS=--require @opentelemetry/auto-instrumentations-node/register
     depends_on:
       - mongo
+      - go-backend
     networks:
-      - express-mongo
-      - react-express
+      - cat-go
     expose:
       - 3000
 
@@ -46,8 +52,8 @@ services:
     ports:
       - 3031:3030
     networks:
-      - express-mongo
-      - opensearch-net
+      - cat-go
+    restart: always
 
   go-auto:
     image: otel/autoinstrumentation-go:v0.13.0-alpha
@@ -62,8 +68,8 @@ services:
       - ./go-backend:/usr/app
       - /proc:/host/proc
     networks:
-      - express-mongo
-      - opensearch-net
+      - cat-go
+    restart: always
     depends_on:
       - jaeger
       - go-backend
@@ -74,7 +80,7 @@ services:
     volumes:
       - mongo_data:/data/db
     networks:
-      - express-mongo
+      - cat-go
     ports:
       - 27018:27017
     expose:
@@ -106,7 +112,7 @@ services:
       - 9300:9300
       - 9600:9600 # required for Performance Analyzer
     networks:
-      - opensearch-net
+      - cat-go
 
   opensearch-node2:
     image: opensearchproject/opensearch:latest
@@ -130,7 +136,7 @@ services:
       - opensearch-data2:/usr/share/opensearch/data
       # - ./custom-opensearch.yml:/usr/share/opensearch/config/opensearch.yml
     networks:
-      - opensearch-net
+      - cat-go
 
   opensearch-dashboards:
     image: opensearchproject/opensearch-dashboards:latest
@@ -142,63 +148,10 @@ services:
     environment:
       OPENSEARCH_HOSTS: '["https://opensearch-node1:9200","https://opensearch-node2:9200"]'
     networks:
-      - opensearch-net
-
-  # jaeger-collector:
-  #   image: jaegertracing/jaeger-collector:1
-  #   container_name: jaeger-collector
-  #   ports:
-  #     - "14269:14269"
-  #     - "14268:14268"
-  #     - "14267:14267"
-  #     - "14250:14250"
-  #     - "9411:9411"
-  #     - "4317:4317"
-  #     - "4318:4318"
-  #   networks:
-  #     - opensearch-net
-  #   restart: on-failure
-  #   environment:
-  #     - SPAN_STORAGE_TYPE=opensearch
-  #     - ES_USERNAME=${OPENSEARCH_INITIAL_USERNAME}
-  #     - ES_PASSWORD=${OPENSEARCH_INITIAL_PASSWORD}
-  #   command:
-  #     [
-  #       "--es.server-urls=https://opensearch-node1:9200,https://opensearch-node2:9200",
-  #       "--es.tls.enabled=true",
-  #       "--es.tls.skip-host-verify=true",
-  #       "--log-level=error",
-  #       "--es.version=7",
-  #       "--es.index-prefix=${OPENSEARCH_INITIAL_USERNAME}",
-  #     ]
-  #   depends_on:
-  #     - opensearch-node1
-
-  # jaeger-query:
-  #   image: jaegertracing/jaeger-query:1
-  #   ports:
-  #     - "16686:16686"
-  #     - "16687:16687"
-  #   networks:
-  #     - opensearch-net
-  #   restart: on-failure
-  #   environment:
-  #     - SPAN_STORAGE_TYPE=opensearch
-  #     - ES_USERNAME=${OPENSEARCH_INITIAL_USERNAME}
-  #     - ES_PASSWORD=${OPENSEARCH_INITIAL_PASSWORD}
-  #   command:
-  #     [
-  #       "--es.server-urls=https://opensearch-node1:9200,https://opensearch-node2:9200",
-  #       "--es.tls.enabled=true",
-  #       "--es.tls.skip-host-verify=true",
-  #       "--log-level=error",
-  #       "--es.version=7",
-  #       "--es.index-prefix=${OPENSEARCH_INITIAL_USERNAME}",
-  #     ]
-  #   depends_on:
-  #     - opensearch-node1
+      - cat-go
 
   jaeger:
+    container_name: jaeger
     image: jaegertracing/all-in-one:1
     ports:
       - "14269:14269"
@@ -211,7 +164,7 @@ services:
       - "16686:16686"
       - "16687:16687"
     networks:
-      - opensearch-net
+      - cat-go
     restart: on-failure
     environment:
       - SPAN_STORAGE_TYPE=opensearch
@@ -230,9 +183,7 @@ services:
       - opensearch-node1
 
 networks:
-  react-express:
-  express-mongo:
-  opensearch-net:
+  cat-go:
 
 volumes:
   mongo_data:
